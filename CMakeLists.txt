@@ -13,7 +13,7 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE RelWithDebInfo)
 endif()
 
-find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Widgets WebSockets)
+find_package(Qt6 6.2 REQUIRED COMPONENTS Core Gui Widgets WebSockets)
 find_package(Protobuf REQUIRED)
 
 # --- protobuf (shared schema with showeq-daemon) ----------------------------

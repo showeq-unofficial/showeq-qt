@@ -1,21 +1,10 @@
 #pragma once
+#include "seq/v1/events.pb.h"
 #include <QObject>
 #include <QTimer>
 #include <QUrl>
 #include <QWebSocket>
 #include <cstdint>
-
-// Forward-declare proto types to avoid leaking generated headers into callers.
-namespace seq { namespace v1 {
-class Snapshot;
-class SpawnAdded;
-class SpawnUpdated;
-class ZoneChanged;
-class PlayerStats;
-class MapGeometry;
-class ChatMessage;
-class BuffsUpdate;
-} }
 
 class DaemonConnection : public QObject {
     Q_OBJECT

@@ -5,12 +5,14 @@
 #include <QGraphicsEllipseItem>
 #include <QGraphicsScene>
 #include <QMouseEvent>
+#include <QScrollBar>
 #include <QWheelEvent>
 
-// EQ coordinate → scene coordinate.
-// EQ: +X=East, +Y=North; Scene: +X=right, +Y=down → negate Y.
+// Daemon ships coords in screen convention (+X right, +Y down) — see
+// the Pos message comment in seq/v1/events.proto. The transform is
+// identity; QGraphicsScene's default axes already match.
 QPointF MapWidget::eqToScene(float x, float y) {
-    return QPointF(static_cast<double>(x), static_cast<double>(-y));
+    return QPointF(static_cast<double>(x), static_cast<double>(y));
 }
 
 MapWidget::MapWidget(QWidget* parent)

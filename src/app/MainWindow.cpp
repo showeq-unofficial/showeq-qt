@@ -90,7 +90,13 @@ void MainWindow::setupMenus() {
     auto* connectAct = fileMenu->addAction("&Connect…", this, &MainWindow::openConnectDialog);
     connectAct->setShortcut(QKeySequence("Ctrl+Shift+C"));
     fileMenu->addSeparator();
-    fileMenu->addAction("E&xit", this, &QWidget::close, QKeySequence::Quit);
+    // Spelled out instead of the addAction(text, receiver, slot, shortcut)
+    // overload, which is deprecated in Qt 6.3+ in favor of
+    // addAction(text, shortcut, receiver, slot) — but that newer overload
+    // doesn't exist in Qt 6.2, our floor.
+    auto* exitAct = fileMenu->addAction("E&xit");
+    exitAct->setShortcut(QKeySequence::Quit);
+    connect(exitAct, &QAction::triggered, this, &QWidget::close);
 
     auto* viewMenu = menuBar()->addMenu("&View");
     // Populate dock toggle actions.

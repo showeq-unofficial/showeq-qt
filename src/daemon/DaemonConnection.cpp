@@ -10,7 +10,11 @@ DaemonConnection::DaemonConnection(QObject* parent)
     connect(&m_socket, &QWebSocket::disconnected, this, &DaemonConnection::onDisconnected);
     connect(&m_socket, &QWebSocket::binaryMessageReceived,
             this, &DaemonConnection::onBinaryMessageReceived);
-    connect(&m_socket, &QWebSocket::errorOccurred, this, &DaemonConnection::onError);
+    // QWebSocket::errorOccurred only exists in Qt 6.5+. Stay on the
+    // legacy `error` signal to keep the Qt 6.2 floor working; use
+    // qOverload to disambiguate from the inherited error() getter.
+    connect(&m_socket, QOverload<QAbstractSocket::SocketError>::of(&QWebSocket::error),
+            this, &DaemonConnection::onError);
 
     m_reconnectTimer.setSingleShot(true);
     connect(&m_reconnectTimer, &QTimer::timeout, this, &DaemonConnection::onReconnectTimer);
