@@ -11,14 +11,42 @@
 #include <QPainterPath>
 #include <QMouseEvent>
 #include <QScrollBar>
+#include <QTimer>
 #include <QWheelEvent>
 #include <QtMath>
+#include <algorithm>
 
 // Daemon ships coords in screen convention (+X right, +Y down) — see
 // the Pos message comment in seq/v1/events.proto. The transform is
 // identity; QGraphicsScene's default axes already match.
 QPointF MapWidget::eqToScene(float x, float y) {
     return QPointF(static_cast<double>(x), static_cast<double>(y));
+}
+
+void MapWidget::SmoothedPos::retarget(float x, float y, qint64 now) {
+    // Lerp from where we are *visually right now* to the new target, so
+    // a fresh update mid-animation slides cleanly instead of snapping
+    // back to the prior `prev` anchor.
+    const QPointF cur = posAt(now);
+    prevX = static_cast<float>(cur.x());
+    prevY = static_cast<float>(cur.y());
+    targetX = x;
+    targetY = y;
+    // Use the actual inter-update interval as the lerp duration so the
+    // animation finishes right around when the next update arrives.
+    // Clamp: too short = back to teleporting; too long = dots lag the
+    // truth across zone-load gaps or pauses.
+    const qint64 elapsed = now - updateTimeMs;
+    durationMs = std::clamp<qint64>(elapsed, 80, 600);
+    updateTimeMs = now;
+}
+
+QPointF MapWidget::SmoothedPos::posAt(qint64 now) const {
+    if (durationMs <= 0) return QPointF(targetX, targetY);
+    const qint64 elapsed = now - updateTimeMs;
+    const double t = std::clamp(double(elapsed) / double(durationMs), 0.0, 1.0);
+    return QPointF(prevX + (targetX - prevX) * t,
+                   prevY + (targetY - prevY) * t);
 }
 
 MapWidget::MapWidget(QWidget* parent)
@@ -42,6 +70,26 @@ MapWidget::MapWidget(QWidget* parent)
     // dots) we don't benefit from the spatial index — linear scan is
     // cheaper than the rebuild cost.
     m_scene->setItemIndexMethod(QGraphicsScene::NoIndex);
+
+    m_animClock.start();
+    m_renderTimer = new QTimer(this);
+    m_renderTimer->setTimerType(Qt::PreciseTimer);
+    m_renderTimer->setInterval(16);  // ~60 Hz
+    connect(m_renderTimer, &QTimer::timeout, this, &MapWidget::onRenderTick);
+}
+
+void MapWidget::onRenderTick() {
+    const qint64 now = m_animClock.elapsed();
+    bool any = false;
+    for (auto it = m_spawns.constBegin(); it != m_spawns.constEnd(); ++it) {
+        if (!it->pos.settledAt(now)) { any = true; break; }
+    }
+    if (!any && m_havePlayer && !m_playerPos.settledAt(now)) any = true;
+    if (!any) {
+        m_renderTimer->stop();
+        return;
+    }
+    viewport()->update();
 }
 
 void MapWidget::applyGeometry(const seq::v1::MapGeometry& geo) {
@@ -108,17 +156,20 @@ void MapWidget::applySnapshot(const seq::v1::Snapshot& snap) {
     m_spawns.clear();
     m_havePlayer = false;
 
+    const qint64 now = m_animClock.elapsed();
     for (const auto& s : snap.spawns()) {
         if (!s.has_pos()) continue;
         float x = ZoneState::toWorld(s.pos().x());
         float y = ZoneState::toWorld(s.pos().y());
         if (s.id() == m_playerId) {
-            m_havePlayer    = true;
-            m_playerX       = x;
-            m_playerY       = y;
+            m_havePlayer = true;
+            m_playerPos.snapTo(x, y, now);
             m_playerHeading = s.pos().heading();
         } else {
-            m_spawns.insert(s.id(), {x, y, s.type()});
+            SpawnRender sr;
+            sr.pos.snapTo(x, y, now);
+            sr.type = s.type();
+            m_spawns.insert(s.id(), sr);
         }
     }
     viewport()->update();
@@ -129,13 +180,16 @@ void MapWidget::applySpawnAdded(const seq::v1::SpawnAdded& msg) {
     if (!s.has_pos()) return;
     float x = ZoneState::toWorld(s.pos().x());
     float y = ZoneState::toWorld(s.pos().y());
+    const qint64 now = m_animClock.elapsed();
     if (s.id() == m_playerId) {
-        m_havePlayer    = true;
-        m_playerX       = x;
-        m_playerY       = y;
+        m_havePlayer = true;
+        m_playerPos.snapTo(x, y, now);
         m_playerHeading = s.pos().heading();
     } else {
-        m_spawns.insert(s.id(), {x, y, s.type()});
+        SpawnRender sr;
+        sr.pos.snapTo(x, y, now);
+        sr.type = s.type();
+        m_spawns.insert(s.id(), sr);
     }
     viewport()->update();
 }
@@ -144,17 +198,21 @@ void MapWidget::applySpawnUpdated(const seq::v1::SpawnUpdated& msg) {
     if (!msg.has_pos()) return;
     float x = ZoneState::toWorld(msg.pos().x());
     float y = ZoneState::toWorld(msg.pos().y());
+    const qint64 now = m_animClock.elapsed();
     if (msg.id() == m_playerId) {
-        m_havePlayer    = true;
-        m_playerX       = x;
-        m_playerY       = y;
+        if (m_havePlayer) {
+            m_playerPos.retarget(x, y, now);
+        } else {
+            m_havePlayer = true;
+            m_playerPos.snapTo(x, y, now);
+        }
         m_playerHeading = msg.pos().heading();
     } else {
         auto it = m_spawns.find(msg.id());
         if (it == m_spawns.end()) return;
-        it->x = x;
-        it->y = y;
+        it->pos.retarget(x, y, now);
     }
+    if (!m_renderTimer->isActive()) m_renderTimer->start();
     viewport()->update();
 }
 
@@ -172,13 +230,16 @@ void MapWidget::setPlayerId(quint32 id) {
 }
 
 void MapWidget::centerOnSpawn(quint32 id) {
+    const qint64 now = m_animClock.elapsed();
     if (id == m_playerId && m_havePlayer) {
-        centerOn(eqToScene(m_playerX, m_playerY));
+        const QPointF p = m_playerPos.posAt(now);
+        centerOn(eqToScene(static_cast<float>(p.x()), static_cast<float>(p.y())));
         return;
     }
     auto it = m_spawns.find(id);
     if (it == m_spawns.end()) return;
-    centerOn(eqToScene(it->x, it->y));
+    const QPointF p = it->pos.posAt(now);
+    centerOn(eqToScene(static_cast<float>(p.x()), static_cast<float>(p.y())));
 }
 
 QColor MapWidget::colorForSpawnType(seq::v1::SpawnType type) {
@@ -196,7 +257,9 @@ QColor MapWidget::colorForSpawnType(seq::v1::SpawnType type) {
 void MapWidget::drawPlayerMarker(QPainter* painter) {
     if (!m_havePlayer) return;
 
-    const QPointF playerScene = eqToScene(m_playerX, m_playerY);
+    const QPointF p = m_playerPos.posAt(m_animClock.elapsed());
+    const QPointF playerScene = eqToScene(static_cast<float>(p.x()),
+                                          static_cast<float>(p.y()));
 
     // ===== FoV (scene coords) =====
     constexpr double fovRadius = 25.0;
@@ -229,12 +292,14 @@ void MapWidget::drawPlayerMarker(QPainter* painter) {
     painter->restore();
 
     // ===== Pixel-sized dot (viewport coords) =====
+    // White fill + black stroke matches showeq-web (#ffffff / #000000)
+    // and the legacy Qt client.
     painter->save();
     painter->resetTransform();
     constexpr int r = 5;
     QPoint vpPos = mapFromScene(playerScene);
-    painter->setBrush(Qt::yellow);
-    painter->setPen(QPen(Qt::black, 1));
+    painter->setBrush(Qt::white);
+    painter->setPen(QPen(Qt::black, 1.5));
     painter->drawEllipse(vpPos, r, r);
     painter->restore();
 }
@@ -262,10 +327,13 @@ void MapWidget::drawForeground(QPainter* painter, const QRectF& sceneRect) {
     // circle of (penWidth) pixels. mapFromScene is a 2D matrix multiply,
     // negligible per-spawn even at 5000+.
     if (!m_spawns.isEmpty()) {
+        const qint64 now = m_animClock.elapsed();
         QHash<QRgb, QVector<QPointF>> byColor;
         byColor.reserve(4);
         for (auto it = m_spawns.constBegin(); it != m_spawns.constEnd(); ++it) {
-            const QPoint vp = mapFromScene(eqToScene(it->x, it->y));
+            const QPointF p = it->pos.posAt(now);
+            const QPoint vp = mapFromScene(eqToScene(static_cast<float>(p.x()),
+                                                     static_cast<float>(p.y())));
             byColor[colorForSpawnType(it->type).rgb()].push_back(vp);
         }
 

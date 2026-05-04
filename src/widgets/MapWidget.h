@@ -4,12 +4,14 @@
 #include <QGraphicsView>
 #include <QHash>
 #include <QList>
+#include <QPointF>
 #include <array>
 
 class QGraphicsScene;
 class QGraphicsEllipseItem;
 class QGraphicsItemGroup;
 class QGraphicsLineItem;
+class QTimer;
 
 class MapWidget : public QGraphicsView {
     Q_OBJECT
@@ -44,9 +46,34 @@ private:
     static QPointF eqToScene(float x, float y);
     static QColor  colorForSpawnType(seq::v1::SpawnType);
     void drawPlayerMarker(QPainter* painter);
+    void onRenderTick();
 
     QGraphicsScene* m_scene;
     quint32 m_playerId{0};
+
+    // Position with linear interpolation between the last two daemon
+    // updates. Daemon sends spawn updates at ~5 Hz; without lerp, dots
+    // visibly teleport on each update. We lerp from the previous render
+    // position to the latest target over the inter-update interval, so
+    // motion looks continuous at the render rate.
+    struct SmoothedPos {
+        float  prevX{0}, prevY{0};
+        float  targetX{0}, targetY{0};
+        qint64 updateTimeMs{0};
+        qint64 durationMs{0};   // 0 = snap to target (no animation)
+
+        void snapTo(float x, float y, qint64 now) {
+            prevX = targetX = x;
+            prevY = targetY = y;
+            updateTimeMs = now;
+            durationMs = 0;
+        }
+        void retarget(float x, float y, qint64 now);
+        QPointF posAt(qint64 now) const;
+        bool settledAt(qint64 now) const {
+            return durationMs <= 0 || (now - updateTimeMs) >= durationMs;
+        }
+    };
 
     // Spawns are rendered in drawForeground (batched via drawPoints) —
     // NOT as individual QGraphicsItems. With 5000+ spawns, individual
@@ -54,15 +81,24 @@ private:
     // requires its own inverse-transform computation per paint). One
     // batched draw per color is much cheaper.
     struct SpawnRender {
-        float              x{0}, y{0};
+        SmoothedPos        pos;
         seq::v1::SpawnType type{seq::v1::SPAWN_UNSPECIFIED};
     };
     QHash<quint32, SpawnRender> m_spawns;
 
-    // Player position + heading, also rendered in drawForeground.
-    bool  m_havePlayer{false};
-    float m_playerX{0}, m_playerY{0};
-    int   m_playerHeading{0};
+    // Player position (smoothed) + heading. Heading is left unsmoothed —
+    // angle wraparound makes naive lerp ugly and the visual artifact is
+    // less obvious than position teleporting.
+    bool        m_havePlayer{false};
+    SmoothedPos m_playerPos;
+    int         m_playerHeading{0};
+
+    // Wall clock for interpolation timestamps + render-tick timer that
+    // drives ~60 Hz repaints while anything is mid-lerp. Stops itself
+    // once every spawn (and the player) has settled at its target so we
+    // don't burn CPU on a static scene.
+    QElapsedTimer m_animClock;
+    QTimer*       m_renderTimer{nullptr};
 
     // Map geometry items (lines + locations) live in the scene because
     // they're static between zone changes. Tracked separately so
