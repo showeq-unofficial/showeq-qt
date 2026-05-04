@@ -29,8 +29,14 @@ SpawnListWidget::SpawnListWidget(SpawnModel* model, QWidget* parent)
     m_view->setAlternatingRowColors(true);
     m_view->setSortingEnabled(true);
     m_view->sortByColumn(SpawnModel::ColName, Qt::AscendingOrder);
-    m_view->header()->setStretchLastSection(false);
-    m_view->header()->setSectionResizeMode(SpawnModel::ColName, QHeaderView::Stretch);
+    // Interactive resize on every column so the user can drag any
+    // edge — including Name. (Stretch mode locks the section width to
+    // "fill remaining space" and disables dragging.) Give Name a
+    // reasonable default width; the saved header state will override
+    // it on subsequent launches.
+    m_view->header()->setSectionResizeMode(QHeaderView::Interactive);
+    m_view->header()->setStretchLastSection(true);
+    m_view->setColumnWidth(SpawnModel::ColName, 220);
     // Critical perf knob at high spawn counts: with uniform row heights
     // QTreeView's itemHeight/coordinateForItem become O(1) instead of
     // scanning every row. perf showed these two functions consuming 44%

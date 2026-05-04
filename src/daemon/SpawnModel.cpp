@@ -11,6 +11,20 @@ static const char* kClassNames[] = {
 };
 static const int kClassCount = static_cast<int>(sizeof(kClassNames)/sizeof(kClassNames[0]));
 
+// Race-name table from showeq-daemon/src/races.h (mirrored verbatim).
+// Sparse: indices without an entry default to NULL → fall back to a
+// numeric string in raceName().
+static const char* kRaceNames[] = {
+#include "daemon/races.h"
+};
+static const int kRaceCount = static_cast<int>(sizeof(kRaceNames)/sizeof(kRaceNames[0]));
+
+static QString raceName(uint32_t race) {
+    if (race < static_cast<uint32_t>(kRaceCount) && kRaceNames[race])
+        return QString::fromLatin1(kRaceNames[race]);
+    return QString::number(race);
+}
+
 SpawnModel::SpawnModel(QObject* parent) : QAbstractTableModel(parent) {}
 
 int SpawnModel::rowCount(const QModelIndex&) const { return m_rows.size(); }
@@ -62,7 +76,7 @@ QVariant SpawnModel::data(const QModelIndex& index, int role) const {
             int c = static_cast<int>(r.classId);
             return (c > 0 && c < kClassCount) ? QString(kClassNames[c]) : QString::number(c);
         }
-        case ColRace:  return r.raceId;
+        case ColRace:  return raceName(r.raceId);
         case ColHP:
             return r.hpMax > 0
                 ? QString::number(100u * r.hpCur / r.hpMax) + "%"
