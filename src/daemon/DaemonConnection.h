@@ -10,6 +10,7 @@ class DaemonConnection : public QObject {
     Q_OBJECT
 public:
     explicit DaemonConnection(QObject* parent = nullptr);
+    ~DaemonConnection() override;
 
     bool isConnected() const;
     QString sessionId() const { return m_sessionId; }

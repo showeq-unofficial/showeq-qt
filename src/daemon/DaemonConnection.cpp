@@ -20,6 +20,20 @@ DaemonConnection::DaemonConnection(QObject* parent)
     connect(&m_reconnectTimer, &QTimer::timeout, this, &DaemonConnection::onReconnectTimer);
 }
 
+DaemonConnection::~DaemonConnection() {
+    // Members destruct in reverse declaration order, so m_reconnectTimer
+    // dies before m_socket. If m_socket's destructor emits disconnected(),
+    // the connected slot would call scheduleReconnect() →
+    // m_reconnectTimer.start() on freed memory. Detach signals and abort
+    // the socket here while everything is still alive.
+    m_intentionalDisconnect = true;
+    m_reconnectTimer.stop();
+    disconnect(&m_socket, nullptr, this, nullptr);
+    if (m_socket.state() != QAbstractSocket::UnconnectedState) {
+        m_socket.abort();
+    }
+}
+
 bool DaemonConnection::isConnected() const {
     return m_socket.state() == QAbstractSocket::ConnectedState;
 }
