@@ -2,6 +2,7 @@
 #include <QColor>
 
 static constexpr char kDaemonUrl[]             = "daemon/url";
+static constexpr char kDaemonHistory[]          = "daemon/history";
 static constexpr char kMainWindowGeometry[]    = "mainwindow/geometry";
 static constexpr char kMainWindowState[]       = "mainwindow/state";
 static constexpr char kSpawnListHeaderState[]  = "spawnlist/headerState";
@@ -22,6 +23,20 @@ QUrl Settings::daemonUrl() const {
 }
 void Settings::setDaemonUrl(const QUrl& url) {
     m_settings.setValue(kDaemonUrl, url.toString());
+}
+
+QStringList Settings::daemonHistory() const {
+    return m_settings.value(kDaemonHistory).toStringList();
+}
+
+void Settings::addDaemonHistory(const QUrl& url) {
+    QString s = url.toString().trimmed();
+    if (s.isEmpty()) return;
+    QStringList hist = daemonHistory();
+    hist.removeAll(s);          // dedupe
+    hist.prepend(s);            // most-recent first
+    while (hist.size() > kHistoryMax) hist.removeLast();
+    m_settings.setValue(kDaemonHistory, hist);
 }
 
 QByteArray Settings::mainWindowGeometry() const {

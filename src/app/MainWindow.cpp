@@ -43,6 +43,7 @@ MainWindow::MainWindow(QWidget* parent)
         restoreState(s.mainWindowState());
     m_spawnList->restoreHeaderState();
 
+    s.addDaemonHistory(s.daemonUrl());     // seed history with current
     m_conn->connectTo(s.daemonUrl());
     statusBar()->showMessage("Connecting…");
 }
@@ -78,7 +79,7 @@ void MainWindow::setupDocks() {
         return dock;
     };
 
-    makeStub("Player Stats", new PlayerStatsWidget(this),  "StatsDock");
+    makeStub("Player Stats", new PlayerStatsWidget(m_playerState, this), "StatsDock");
     makeStub("Spells",       new SpellListWidget(this),    "SpellsDock");
     makeStub("Messages",     new MessageWindow(this),      "MessagesDock");
     makeStub("Compass",      new CompassWidget(this),      "CompassDock");
@@ -139,6 +140,10 @@ void MainWindow::connectDaemonSignals() {
     // Player state.
     connect(m_conn, &DaemonConnection::playerStatsUpdated,
             m_playerState, &PlayerState::applyStats);
+
+    // Spawn list double-click → center map on the spawn.
+    connect(m_spawnList, &SpawnListWidget::centerOnSpawn,
+            m_map, &MapWidget::centerOnSpawn);
 }
 
 void MainWindow::onConnectionStateChanged(bool connected) {
@@ -162,13 +167,16 @@ void MainWindow::updateTitle() {
 }
 
 void MainWindow::openConnectDialog() {
+    auto& s = Settings::instance();
     ConnectDialog dlg(this);
-    dlg.setUrl(Settings::instance().daemonUrl());
+    dlg.setHistory(s.daemonHistory());
+    dlg.setUrl(s.daemonUrl());
     if (dlg.exec() != QDialog::Accepted)
         return;
     QUrl url = dlg.url();
     if (!url.isValid()) return;
-    Settings::instance().setDaemonUrl(url);
+    s.setDaemonUrl(url);
+    s.addDaemonHistory(url);
     m_conn->disconnectFromDaemon();
     m_conn->connectTo(url);
 }

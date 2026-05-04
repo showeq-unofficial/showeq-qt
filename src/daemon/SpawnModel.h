@@ -21,7 +21,8 @@ struct SpawnRow {
 class SpawnModel : public QAbstractTableModel {
     Q_OBJECT
 public:
-    enum Column { ColName, ColLevel, ColClass, ColRace, ColHP, ColX, ColY, ColZ, ColCount };
+    enum Column { ColName, ColLevel, ColClass, ColRace, ColHP, ColDist,
+                  ColX, ColY, ColZ, ColCount };
 
     explicit SpawnModel(QObject* parent = nullptr);
 
@@ -31,6 +32,7 @@ public:
     QVariant headerData(int section, Qt::Orientation, int role = Qt::DisplayRole) const override;
 
     quint32 spawnIdAt(int row) const;
+    quint32 playerId() const { return m_playerId; }
 
 public slots:
     void clear();
@@ -39,10 +41,26 @@ public slots:
     void applySpawnUpdated(const seq::v1::SpawnUpdated&);
     void applySpawnRemoved(quint32 id);
 
+private slots:
+    void flushDirtyRows();
+
 private:
     static SpawnRow rowFromProto(const seq::v1::Spawn&);
     int indexOf(quint32 id) const;
+    // Returns negative if no player tracked or player isn't in this zone.
+    float distanceFromPlayer(int row) const;
+    // Mark `row` for emit; coalesced via singleShot timer to avoid
+    // firing one signal per spawn update at high spawn counts (5000
+    // spawns × 5 Hz = 25000 signals/sec without coalescing).
+    void scheduleRowDirty(int row);
 
     QVector<SpawnRow>      m_rows;
     QHash<quint32, int>    m_index; // id → row position
+    quint32                m_playerId{0};
+
+    // Coalesced repaint state.
+    int  m_dirtyRowMin{INT_MAX};
+    int  m_dirtyRowMax{INT_MIN};
+    bool m_dirtyAllDistances{false};
+    bool m_flushScheduled{false};
 };

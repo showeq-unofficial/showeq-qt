@@ -14,8 +14,12 @@ public:
     void saveHeaderState();
     void restoreHeaderState();
 
+signals:
+    void centerOnSpawn(quint32 id);
+
 private slots:
     void onFilterChanged(const QString& text);
+    void onRowDoubleClicked(const QModelIndex& proxyIndex);
 
 private:
     QTreeView*              m_view;

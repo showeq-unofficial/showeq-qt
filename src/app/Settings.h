@@ -11,6 +11,11 @@ public:
     QUrl daemonUrl() const;
     void setDaemonUrl(const QUrl&);
 
+    // Recent daemon URLs, most-recent-first, capped at kHistoryMax.
+    QStringList daemonHistory() const;
+    void addDaemonHistory(const QUrl&);
+    static constexpr int kHistoryMax = 10;
+
     // Persists QMainWindow::saveGeometry() / saveState() blobs.
     QByteArray mainWindowGeometry() const;
     void setMainWindowGeometry(const QByteArray&);

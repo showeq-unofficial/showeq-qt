@@ -39,10 +39,19 @@ bool DaemonConnection::isConnected() const {
 }
 
 void DaemonConnection::connectTo(const QUrl& url) {
-    m_url = url;
+    // QWebSocket builds the HTTP upgrade request as
+    // `GET <path><?query> HTTP/1.1`. If the URL has no path but a
+    // query, the request line becomes `GET ?foo=bar HTTP/1.1` which
+    // most HTTP servers reject as malformed (the request URI must
+    // start with "/"). Normalize an empty path to "/" so query-only
+    // URLs like `wss://host?spawncount=500` work as expected.
+    QUrl normalized = url;
+    if (normalized.path().isEmpty())
+        normalized.setPath("/");
+    m_url = normalized;
     m_intentionalDisconnect = false;
     m_reconnectDelayMs = 1000;
-    m_socket.open(url);
+    m_socket.open(m_url);
 }
 
 void DaemonConnection::disconnectFromDaemon() {

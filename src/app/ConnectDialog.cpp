@@ -1,4 +1,5 @@
 #include "ConnectDialog.h"
+#include <QComboBox>
 #include <QDialogButtonBox>
 #include <QFormLayout>
 #include <QLabel>
@@ -11,12 +12,14 @@ ConnectDialog::ConnectDialog(QWidget* parent)
     setWindowTitle("Connect to Daemon");
     setModal(true);
 
-    m_urlEdit = new QLineEdit(this);
-    m_urlEdit->setMinimumWidth(300);
-    m_urlEdit->setPlaceholderText("ws://127.0.0.1:9090");
+    m_urlCombo = new QComboBox(this);
+    m_urlCombo->setEditable(true);
+    m_urlCombo->setInsertPolicy(QComboBox::NoInsert); // dedupe handled in Settings
+    m_urlCombo->setMinimumWidth(360);
+    m_urlCombo->lineEdit()->setPlaceholderText("ws://127.0.0.1:9090");
 
     auto* form = new QFormLayout;
-    form->addRow("Daemon URL:", m_urlEdit);
+    form->addRow("Daemon URL:", m_urlCombo);
 
     auto* buttons = new QDialogButtonBox(
         QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
@@ -29,9 +32,17 @@ ConnectDialog::ConnectDialog(QWidget* parent)
 }
 
 QUrl ConnectDialog::url() const {
-    return QUrl(m_urlEdit->text().trimmed());
+    return QUrl(m_urlCombo->currentText().trimmed());
 }
 
 void ConnectDialog::setUrl(const QUrl& url) {
-    m_urlEdit->setText(url.toString());
+    m_urlCombo->setEditText(url.toString());
+}
+
+void ConnectDialog::setHistory(const QStringList& urls) {
+    // Preserve any text the caller already typed.
+    const QString current = m_urlCombo->currentText();
+    m_urlCombo->clear();
+    m_urlCombo->addItems(urls);
+    m_urlCombo->setEditText(current);
 }

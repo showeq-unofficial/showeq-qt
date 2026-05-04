@@ -1,8 +1,9 @@
 #pragma once
 #include <QDialog>
+#include <QStringList>
 #include <QUrl>
 
-class QLineEdit;
+class QComboBox;
 
 class ConnectDialog : public QDialog {
     Q_OBJECT
@@ -10,7 +11,8 @@ public:
     explicit ConnectDialog(QWidget* parent = nullptr);
     QUrl url() const;
     void setUrl(const QUrl&);
+    void setHistory(const QStringList& urls);
 
 private:
-    QLineEdit* m_urlEdit;
+    QComboBox* m_urlCombo;
 };

@@ -18,6 +18,10 @@ SpawnListWidget::SpawnListWidget(SpawnModel* model, QWidget* parent)
     m_proxy->setSourceModel(model);
     m_proxy->setFilterCaseSensitivity(Qt::CaseInsensitive);
     m_proxy->setFilterKeyColumn(SpawnModel::ColName);
+    // Sort by EditRole so numeric columns (Dist, X, Y, Z, HP) sort
+    // numerically; string-only columns (Name, Class) fall back to
+    // DisplayRole automatically when EditRole returns invalid.
+    m_proxy->setSortRole(Qt::EditRole);
 
     m_view = new QTreeView(this);
     m_view->setModel(m_proxy);
@@ -27,6 +31,11 @@ SpawnListWidget::SpawnListWidget(SpawnModel* model, QWidget* parent)
     m_view->sortByColumn(SpawnModel::ColName, Qt::AscendingOrder);
     m_view->header()->setStretchLastSection(false);
     m_view->header()->setSectionResizeMode(SpawnModel::ColName, QHeaderView::Stretch);
+    // Critical perf knob at high spawn counts: with uniform row heights
+    // QTreeView's itemHeight/coordinateForItem become O(1) instead of
+    // scanning every row. perf showed these two functions consuming 44%
+    // of CPU at 5000 spawns before this was set.
+    m_view->setUniformRowHeights(true);
 
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(2, 2, 2, 2);
@@ -35,6 +44,15 @@ SpawnListWidget::SpawnListWidget(SpawnModel* model, QWidget* parent)
     layout->addWidget(m_view);
 
     connect(m_filterEdit, &QLineEdit::textChanged, this, &SpawnListWidget::onFilterChanged);
+    connect(m_view, &QTreeView::doubleClicked, this, &SpawnListWidget::onRowDoubleClicked);
+}
+
+void SpawnListWidget::onRowDoubleClicked(const QModelIndex& proxyIndex) {
+    if (!proxyIndex.isValid()) return;
+    QModelIndex src = m_proxy->mapToSource(proxyIndex);
+    quint32 id = m_model->spawnIdAt(src.row());
+    if (id != 0)
+        emit centerOnSpawn(id);
 }
 
 void SpawnListWidget::onFilterChanged(const QString& text) {
