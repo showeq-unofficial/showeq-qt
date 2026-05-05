@@ -107,8 +107,8 @@ jobs:
       # linuxdeploy itself ships as an AppImage; FUSE isn't available in
       # GHA containers, so extract-and-run is the supported path.
       APPIMAGE_EXTRACT_AND_RUN: "1"
-      # Stable filename for the rolling continuous release.
-      VERSION: continuous
+      # VERSION unset — build-appimage.sh defaults to `git describe --always`,
+      # which yields the short commit SHA in CI checkouts.
     steps:
       - name: Install build deps
         run: |
@@ -141,37 +141,67 @@ jobs:
           path: build/showeq-qt-*.AppImage
 
   publish-rolling:
-    name: Publish continuous AppImage
+    name: Publish dev release
     runs-on: ubuntu-latest
     needs: build-appimage
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:
       contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/download-artifact@v4
         with:
           name: showeq-qt-appimage
           path: dist
 
-      - name: Update "continuous" prerelease
+      - uses: actions/download-artifact@v4
+        with:
+          name: showeq-qt-windows
+          path: dist-win
+
+      - name: Stage Windows binary with short SHA
+        run: |
+          mv dist-win/showeq-qt.exe "dist/showeq-qt-${GITHUB_SHA::7}-windows-x64.exe"
+          ls -la dist/
+
+      - name: Wipe stale assets on dev release
+        # SHA-bearing filenames change every push, so softprops can't clobber
+        # them by name — strip the old ones first to keep the release tidy.
+        run: |
+          if gh release view dev --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release view dev --repo "${{ github.repository }}" --json assets \
+              --jq '.assets[].name' \
+            | while read -r name; do
+                gh release delete-asset dev "$name" --yes \
+                  --repo "${{ github.repository }}" || true
+              done
+          fi
+
+      - name: Update "dev" prerelease
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: continuous
+          tag_name: dev
           target_commitish: ${{ github.sha }}
-          name: Continuous build
+          name: Dev build
           prerelease: true
-          # Replace assets so the release always reflects HEAD of main.
-          files: dist/*.AppImage
+          files: |
+            dist/showeq-qt-*-x86_64.AppImage
+            dist/showeq-qt-*-windows-x64.exe
           body: |
-            Rolling AppImage build from the tip of `main`.
+            Rolling dev build from the tip of `main`. Asset filenames carry
+            the short commit SHA so each build is identifiable.
 
-            Built on Ubuntu 22.04 (glibc 2.35), so it should run on most
-            modern Linux distros without recompiling Qt or libc.
+            Linux AppImage built on Debian bookworm (glibc 2.36) — runs on
+            Ubuntu 22.04+, Debian 12+, Fedora 36+, RHEL/Alma 9.4+.
 
             Commit: `${{ github.sha }}`
 
             Usage:
             ```
-            chmod +x showeq-qt-continuous-x86_64.AppImage
-            ./showeq-qt-continuous-x86_64.AppImage
+            # Linux
+            chmod +x showeq-qt-*-x86_64.AppImage
+            ./showeq-qt-*-x86_64.AppImage
+
+            # Windows: just run the .exe
             ```
