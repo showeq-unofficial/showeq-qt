@@ -23,8 +23,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SRC_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 BUILD_DIR="${1:-$SRC_DIR/build}"
 ARCH="${ARCH:-x86_64}"
+# Normalize BUILD_DIR + OUTPUT_DIR to absolute paths — the script later cd's
+# into BUILD_DIR, after which any relative path (e.g. CI's `build`) breaks
+# downstream references to $LD / $APPDIR.
+mkdir -p "$BUILD_DIR"
+BUILD_DIR="$(cd "$BUILD_DIR" && pwd)"
 TOOLS_DIR="${TOOLS_DIR:-$BUILD_DIR/tools}"
 OUTPUT_DIR="${OUTPUT_DIR:-$BUILD_DIR}"
+mkdir -p "$OUTPUT_DIR"
+OUTPUT_DIR="$(cd "$OUTPUT_DIR" && pwd)"
 APPDIR="$BUILD_DIR/AppDir"
 
 if [[ -z "${VERSION:-}" ]]; then
