@@ -105,7 +105,9 @@ jobs:
             -Dprotobuf_BUILD_EXAMPLES=OFF `
             -Dprotobuf_BUILD_LIBPROTOC=ON `
             -Dprotobuf_BUILD_SHARED_LIBS=OFF `
-            -Dprotobuf_ABSL_PROVIDER=module
+            -Dprotobuf_MSVC_STATIC_RUNTIME=OFF `
+            -Dprotobuf_ABSL_PROVIDER=module `
+            -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreadedDLL
           cmake --build protobuf-src\build --config Release --parallel
           cmake --install protobuf-src\build --config Release
 
