@@ -61,44 +61,71 @@ jobs:
         run: cmake --build build --parallel
 
   build-windows:
-    name: Windows (Qt6, vcpkg)
+    name: Windows (Qt6 binaries + protobuf from source)
     runs-on: windows-latest
+    # Recipe: prebuilt Qt6 via aqt (jurplel/install-qt-action) + protobuf
+    # built from source once and actions/cache'd by tag. vcpkg dropped
+    # because (a) Qt6 was 90% of the time and (b) microsoft removed the
+    # `x-gha` binary cache backend, so lukka/run-vcpkg rebuilt every run.
+    env:
+      PROTOBUF_VERSION: v28.3
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      - name: Export GHA cache env for vcpkg
-        uses: actions/github-script@v7
+      - name: Install Qt6
+        uses: jurplel/install-qt-action@v4
         with:
-          script: |
-            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
-            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+          version: '6.8.*'
+          host: windows
+          target: desktop
+          arch: win64_msvc2022_64
+          modules: qtwebsockets
+          cache: true
 
-      - name: Set up vcpkg
-        uses: lukka/run-vcpkg@v11
+      - name: Cache protobuf install tree
+        id: cache-protobuf
+        uses: actions/cache@v4
         with:
-          vcpkgJsonGlob: vcpkg.json
+          path: protobuf-install
+          key: protobuf-${{ env.PROTOBUF_VERSION }}-windows-x64-msvc2022
+
+      - name: Build protobuf from source
+        if: steps.cache-protobuf.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth 1 --branch $env:PROTOBUF_VERSION `
+            https://github.com/protocolbuffers/protobuf protobuf-src
+          cmake -S protobuf-src -B protobuf-src\build `
+            -G "Visual Studio 17 2022" -A x64 `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_INSTALL_PREFIX="${{ github.workspace }}\protobuf-install" `
+            -Dprotobuf_BUILD_TESTS=OFF `
+            -Dprotobuf_BUILD_EXAMPLES=OFF `
+            -Dprotobuf_BUILD_LIBPROTOC=ON `
+            -Dprotobuf_BUILD_SHARED_LIBS=OFF `
+            -Dprotobuf_ABSL_PROVIDER=module
+          cmake --build protobuf-src\build --config Release --parallel
+          cmake --install protobuf-src\build --config Release
 
       - name: Configure
         run: |
           cmake -B build -G "Visual Studio 17 2022" -A x64 `
-            -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
+            -DCMAKE_PREFIX_PATH="${{ github.workspace }}\protobuf-install" `
             -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
         run: cmake --build build --config Release --parallel
 
       - name: Stage Windows release with windeployqt
-        # Bare showeq-qt.exe links against vcpkg's Qt6 DLLs and won't launch
-        # on a machine without them — windeployqt copies the right Qt6Core/
-        # Gui/Widgets/WebSockets/Network DLLs and platform plugins next to
-        # the binary so the zip is self-contained.
+        # install-qt-action puts Qt's bin dir on PATH, so `windeployqt`
+        # resolves directly. It copies Qt6Core/Gui/Widgets/WebSockets/
+        # Network DLLs + the platform plugin next to the exe so the zip
+        # runs on a clean Windows machine.
         run: |
           New-Item -ItemType Directory -Force release | Out-Null
           Copy-Item build\Release\showeq-qt.exe release\
-          $windeployqt = "build\vcpkg_installed\x64-windows\tools\Qt6\bin\windeployqt.exe"
-          & $windeployqt release\showeq-qt.exe --release --no-translations `
+          windeployqt release\showeq-qt.exe --release --no-translations `
             --no-system-d3d-compiler --no-opengl-sw
           Compress-Archive -Path release\* -DestinationPath build\showeq-qt-windows-x64.zip
 
