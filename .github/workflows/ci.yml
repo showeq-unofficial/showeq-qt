@@ -96,9 +96,11 @@ jobs:
           path: build/Release/showeq-qt.exe
 
   build-appimage:
-    name: AppImage (Ubuntu 22.04)
+    name: AppImage (Debian bookworm)
     runs-on: ubuntu-latest
-    container: ubuntu:22.04
+    # bookworm has glibc 2.36 + ships qt6-websockets-dev (Ubuntu 22.04/jammy
+    # only ships the runtime stub; the -dev pkg first appeared in noble/24.04).
+    container: debian:bookworm-slim
     needs: [build-ubuntu, build-fedora, build-windows]
     env:
       DEBIAN_FRONTEND: noninteractive
@@ -116,7 +118,7 @@ jobs:
             cmake ninja-build build-essential \
             qt6-base-dev qt6-websockets-dev \
             libprotobuf-dev protobuf-compiler \
-            libgl1-mesa-dev libxkbcommon-dev \
+            libgl-dev libxkbcommon-dev \
             file desktop-file-utils
 
       - uses: actions/checkout@v4
