@@ -14,7 +14,15 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 find_package(Qt6 6.2 REQUIRED COMPONENTS Core Gui Widgets WebSockets)
-find_package(Protobuf REQUIRED)
+# Modern protobuf (22+, with abseil deps) ships `protobufConfig.cmake`
+# whose `protobuf::libprotobuf` target carries transitive absl link deps.
+# Older protobuf 3.x (e.g. Ubuntu 24.04's system 3.21.12) ships no
+# Config file, only CMake's built-in FindProtobuf.cmake. Try CONFIG
+# first; fall back to module mode for legacy distros.
+find_package(protobuf CONFIG QUIET)
+if(NOT protobuf_FOUND)
+  find_package(Protobuf REQUIRED)
+endif()
 
 # --- protobuf (shared schema with showeq-daemon) ----------------------------
 set(SEQ_PROTO_DIR "${CMAKE_SOURCE_DIR}/proto")
