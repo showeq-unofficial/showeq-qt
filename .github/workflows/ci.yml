@@ -170,6 +170,9 @@ jobs:
         # Inside the container, git describe trips over "dubious ownership"
         # (host UID 1001 vs container root) and the script falls back to
         # 0.0.0. Set VERSION explicitly so the asset name carries the SHA.
+        # GHA defaults to `sh -e` in containers (dash on Debian), which
+        # doesn't support ${VAR::N} — force bash.
+        shell: bash
         run: echo "VERSION=${GITHUB_SHA::7}" >> "$GITHUB_ENV"
 
       - name: Configure
