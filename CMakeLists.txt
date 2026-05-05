@@ -99,6 +99,30 @@ if(WIN32)
   set_target_properties(showeq-qt PROPERTIES WIN32_EXECUTABLE TRUE)
 endif()
 
+# --- install rules (used by .deb CPack and AppImage packaging) --------------
+include(GNUInstallDirs)
+install(TARGETS showeq-qt RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+if(UNIX AND NOT APPLE)
+  install(FILES   packaging/showeq-qt.desktop
+          DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+  install(FILES   packaging/showeq-qt.png
+          DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/256x256/apps)
+endif()
+
+# --- AppImage convenience target -------------------------------------------
+# `cmake --build <build> --target appimage` runs packaging/build-appimage.sh
+# against this build dir. The script downloads linuxdeploy on demand.
+if(UNIX AND NOT APPLE)
+  add_custom_target(appimage
+    COMMAND ${CMAKE_COMMAND} -E env
+            "VERSION=${CPACK_PACKAGE_VERSION}"
+            bash ${CMAKE_SOURCE_DIR}/packaging/build-appimage.sh ${CMAKE_BINARY_DIR}
+    DEPENDS showeq-qt
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    USES_TERMINAL
+    COMMENT "Building showeq-qt AppImage")
+endif()
+
 # --- CPack ------------------------------------------------------------------
 set(CPACK_PACKAGE_NAME "showeq-qt")
 set(CPACK_PACKAGE_VERSION "0.1.0")

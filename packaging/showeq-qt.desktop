@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=ShowEQ Qt
+GenericName=EverQuest packet viewer (client)
+Comment=Qt6 client that connects to a showeq-daemon over WebSocket
+Exec=showeq-qt
+Icon=showeq-qt
+Categories=Network;
+Terminal=false
+StartupNotify=true
