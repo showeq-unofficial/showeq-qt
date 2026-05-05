@@ -95,6 +95,7 @@ jobs:
         if: steps.cache-protobuf.outputs.cache-hit != 'true'
         run: |
           git clone --depth 1 --branch $env:PROTOBUF_VERSION `
+            --recurse-submodules --shallow-submodules `
             https://github.com/protocolbuffers/protobuf protobuf-src
           cmake -S protobuf-src -B protobuf-src\build `
             -G "Visual Studio 17 2022" -A x64 `
