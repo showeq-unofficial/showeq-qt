@@ -89,11 +89,24 @@ jobs:
       - name: Build
         run: cmake --build build --config Release --parallel
 
+      - name: Stage Windows release with windeployqt
+        # Bare showeq-qt.exe links against vcpkg's Qt6 DLLs and won't launch
+        # on a machine without them — windeployqt copies the right Qt6Core/
+        # Gui/Widgets/WebSockets/Network DLLs and platform plugins next to
+        # the binary so the zip is self-contained.
+        run: |
+          New-Item -ItemType Directory -Force release | Out-Null
+          Copy-Item build\Release\showeq-qt.exe release\
+          $windeployqt = "build\vcpkg_installed\x64-windows\tools\Qt6\bin\windeployqt.exe"
+          & $windeployqt release\showeq-qt.exe --release --no-translations `
+            --no-system-d3d-compiler --no-opengl-sw
+          Compress-Archive -Path release\* -DestinationPath build\showeq-qt-windows-x64.zip
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: showeq-qt-windows
-          path: build/Release/showeq-qt.exe
+          path: build/showeq-qt-windows-x64.zip
 
   build-appimage:
     name: AppImage (Debian bookworm)
@@ -107,8 +120,6 @@ jobs:
       # linuxdeploy itself ships as an AppImage; FUSE isn't available in
       # GHA containers, so extract-and-run is the supported path.
       APPIMAGE_EXTRACT_AND_RUN: "1"
-      # VERSION unset — build-appimage.sh defaults to `git describe --always`,
-      # which yields the short commit SHA in CI checkouts.
     steps:
       - name: Install build deps
         run: |
@@ -124,6 +135,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
+
+      - name: Compute short SHA for filename
+        # Inside the container, git describe trips over "dubious ownership"
+        # (host UID 1001 vs container root) and the script falls back to
+        # 0.0.0. Set VERSION explicitly so the asset name carries the SHA.
+        run: echo "VERSION=${GITHUB_SHA::7}" >> "$GITHUB_ENV"
 
       - name: Configure
         run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
@@ -162,7 +179,8 @@ jobs:
 
       - name: Stage Windows binary with short SHA
         run: |
-          mv dist-win/showeq-qt.exe "dist/showeq-qt-${GITHUB_SHA::7}-windows-x64.exe"
+          mv dist-win/showeq-qt-windows-x64.zip \
+             "dist/showeq-qt-${GITHUB_SHA::7}-windows-x64.zip"
           ls -la dist/
 
       - name: Wipe stale assets on dev release
@@ -187,13 +205,14 @@ jobs:
           prerelease: true
           files: |
             dist/showeq-qt-*-x86_64.AppImage
-            dist/showeq-qt-*-windows-x64.exe
+            dist/showeq-qt-*-windows-x64.zip
           body: |
             Rolling dev build from the tip of `main`. Asset filenames carry
             the short commit SHA so each build is identifiable.
 
             Linux AppImage built on Debian bookworm (glibc 2.36) — runs on
             Ubuntu 22.04+, Debian 12+, Fedora 36+, RHEL/Alma 9.4+.
+            Windows zip is self-contained (Qt6 DLLs bundled via windeployqt).
 
             Commit: `${{ github.sha }}`
 
@@ -203,5 +222,5 @@ jobs:
             chmod +x showeq-qt-*-x86_64.AppImage
             ./showeq-qt-*-x86_64.AppImage
 
-            # Windows: just run the .exe
+            # Windows: extract the zip and run showeq-qt.exe
             ```
