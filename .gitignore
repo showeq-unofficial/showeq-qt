@@ -6,3 +6,6 @@ compile_commands.json
 .vscode/
 .vs/
 CMakeUserPresets.json
+
+# Claude Code local session state (cozempic hooks, worktrees)
+.claude/
